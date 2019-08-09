@@ -29,12 +29,15 @@ module Counter
   parameter STEP 1
  )
 (
-    input logic clock, reset_L, en, incr,
+    input logic clock, reset_L, en, incr, clear,
     output logic [WIDTH-1:0] Q
 );
 
     always_ff @(posedge clock, negedge reset_L) begin
         if (~reset_L) begin
+            Q <= 'b0;
+        end
+        else if (clear) begin
             Q <= 'b0;
         end
         else if (en) begin
@@ -68,26 +71,61 @@ module HV_Mode
 
     logic [tHP-1:0] hp;
     logic [tVP-1:0] vp;
-    logic [tWH-1:0] wh;
-    logic [tWV-1:0] wv;
-    logic [tWHA-1:0] wha;
-    logic [tWVA-1:0] wva;
+    logic wh, hbp, wha, hfp;
+    logic wv, vbp, wva, vfp;
 
-    Counter #(WIDTH=$clog2(tHP)) hperiod(.clock, .reset_L,
+    logic clear_hp;
+    logic clear_vp;
+
+    assign clear_hp = (hp == tHP);
+    Counter #(WIDTH=$clog2(tHP)) hperiod(.clock, .reset_L, .clear(clear_hp),
                                          .en, .incr('b1), .Q(hp));
-    Counter #(WIDTH=$clog2(tVP)) vperiod(.clock, .reset_L,
-                                         .en(hp == tHP), .incr('b1), .Q(vp));
     
-    Counter #(WIDTH=$clog2(tWH)) hwidth(.clock, .reset_L,
-                                         .en, .incr('b1), .Q(wh));
-    Counter #(WIDTH=$clog2(tWV)) vwidth(.clock, .reset_L,
-                                         .en(hp == tWV), .incr('b1), .Q(wv));
-    
-    Counter #(WIDTH=$clog2(tWHA)) hwidtha(.clock, .reset_L,
-                                         .en, .incr('b1), .Q(wha));
-    Counter #(WIDTH=$clog2(tWVA)) vwidtha(.clock, .reset_L,
-                                         .en(hp == tWVA), .incr('b1), .Q(wva));
+    assign wh = (hp > tWH);
+    assign hbp = (hp > tWH) && (hp <= (tWH+tHBP));
+    assign wha = (hp > (tWH+tHBP)) && (hp <= (tWH+tHBP+tWHA));
+    assign hfp = (hp > (tWH+tHBP+tWHA));
 
-    assign data_en = hsync && vsync;
+    assign clear_vp = (vp == tVP);
+    Counter #(WIDTH=$clog2(tVP)) vperiod(.clock, .reset_L, .clear(clear_vp),
+                                         .en(hp == tHP), .incr('b1), .Q(vp));
+
+    assign wv = (vp > tWV);
+    assign vbp = (vp > tWV) && (vp <= (tWV+tVBP));
+    assign wva = (vp > (tWV+tVBP)) && (vp <= (tWV+tVBP+tWVA));
+    assign vfp = (vp > (tWV+tVBP+tWVA));
+
+    assign hsync = wh | hbp | wha | hfp;
+    assign vsync = wv | wbp | wva | vfp;
+
+    assign data_en = hsync & vsync;
 
 endmodule : HV_Mode
+
+module HV_Mode_TB();
+    logic clock, reset_L, en;
+    logic hsync, vsync, data_en;
+
+    HV_Mode_TB DUT(.*);
+
+    initial begin
+        clock = 'b0;
+        reset_L = 'b1;
+        en = 'b0;
+        forever #10 clock = ~clock;
+    end
+
+    // properties
+    property data_en_prop;
+        @(posedge clock) disable iff (~reset_L) data_en |-> (hsync && vsync);
+    endproperty
+    
+    property contr_data_en_prop;
+        @(posedge clock) disable iff (~reset_L) (hsync && vsync) |-> data_en;
+    endproperty
+
+    // assertions
+    assert property (data_en_prop) else $display("data_en HIGH when both hsync and vsync NOT HIGHT!");
+    assert property (contr_data_en_prop) else $display("data_en NOT HIGH when both hsync and vsync HIGHT!");
+
+endmodule : HV_Mode_TB
