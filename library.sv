@@ -4,7 +4,7 @@
 */
 
 `default_nettype none
-
+/*
 module Register
 #(parameter WIDTH=8)
 (
@@ -23,7 +23,7 @@ module Register
     end
 
 endmodule : Register
-
+*/
 module Counter
 #(parameter WIDTH=8,
   parameter STEP=1
@@ -81,7 +81,7 @@ module HV_Mode
     Counter #(.WIDTH($clog2(tHP))) hperiod(.clock, .reset_L, .clear(clear_hp),
                                          .en, .incr(1'b1), .Q(hp));
     
-    assign wh = (hp > tWH);
+    assign wh = (hp >= tWH);
     assign hbp = (hp > tWH) && (hp <= (tWH+tHBP));
     assign wha = (hp > (tWH+tHBP)) && (hp <= (tWH+tHBP+tWHA));
     assign hfp = (hp > (tWH+tHBP+tWHA));
@@ -90,7 +90,7 @@ module HV_Mode
     Counter #(.WIDTH($clog2(tVP))) vperiod(.clock, .reset_L, .clear(clear_vp),
                                          .en(hp == tHP), .incr(1'b1), .Q(vp));
 
-    assign wv = (vp > tWV);
+    assign wv = (vp >= tWV);
     assign vbp = (vp > tWV) && (vp <= (tWV+tVBP));
     assign wva = (vp > (tWV+tVBP)) && (vp <= (tWV+tVBP+tWVA));
     assign vfp = (vp > (tWV+tVBP+tWVA));
@@ -99,40 +99,47 @@ module HV_Mode
     assign vsync = wv | vbp | wva | vfp;
 
     assign data_en = hsync & vsync;
+    
+    // properties
+    property data_en_prop;
+        @(posedge clock) disable iff (~reset_L) data_en |-> (hsync && vsync);
+    endproperty
+    property contr_data_en_prop;
+        @(posedge clock) disable iff (~reset_L) (hsync && vsync) |-> data_en;
+    endproperty
+    property hperiod_prop;
+        @(posedge clock) disable iff (~reset_L) ((hp == 0) && (en)) |-> ##[1229:1372] (hp == 0);
+    endproperty
+    
+    // assertions
+    assert property (data_en_prop) else $display("data_en HIGH when both hsync and vsync NOT HIGHT!");
+    assert property (contr_data_en_prop) else $display("data_en NOT HIGH when both hsync and vsync HIGHT!");
+    assert property (hperiod_prop) else $display("hperiod not within MIN/MAX!");
 
 endmodule : HV_Mode
 
-module HV_Mode_TB();
+module HV_Mode_TB
+();
     logic clock, reset_L, en;
     logic hsync, vsync, data_en;
 
-    HV_Mode_TB DUT(.*);
+    HV_Mode DUT(.*);
 
     initial begin
         clock = 'b0;
-        reset_L = 'b1;
+        reset_L = 'b0;
         en = 'b0;
         forever #10 clock = ~clock;
     end
 
     initial begin
-        $dumpfile("dump.vcd");
-        $dumpvars;
-        #100;
+        @(posedge clock);
+        reset_L <= 'b1;
+        en <= 'b1;
+        repeat (855000) begin
+          @(posedge clock);
+        end
         $finish();
     end
-
-    // properties
-    property data_en_prop;
-        @(posedge clock) disable iff (~reset_L) data_en |-> (hsync && vsync);
-    endproperty
-    
-    property contr_data_en_prop;
-        @(posedge clock) disable iff (~reset_L) (hsync && vsync) |-> data_en;
-    endproperty
-
-    // assertions
-    assert property (data_en_prop) else $display("data_en HIGH when both hsync and vsync NOT HIGHT!");
-    assert property (contr_data_en_prop) else $display("data_en NOT HIGH when both hsync and vsync HIGHT!");
 
 endmodule : HV_Mode_TB
