@@ -4,7 +4,7 @@
 */
 
 `default_nettype none
-/*
+
 module Register
 #(parameter WIDTH=8)
 (
@@ -23,7 +23,7 @@ module Register
     end
 
 endmodule : Register
-*/
+
 module Counter
 #(parameter WIDTH=8,
   parameter STEP=1
@@ -51,6 +51,26 @@ module Counter
     end
 
 endmodule : Counter
+
+module LVDS_Data
+(
+    input logic clock, reset_L, en,
+    input logic [7:0] R, G, B,
+    input logic hsync, vsync, data_en,
+    output logic [3:0] Q
+);
+
+    Register #(.WIDTH(8)) Rreg(.clock, .reset_L, .en, .D(R), .Q(R_));
+    Register #(.WIDTH(8)) Greg(.clock, .reset_L, .en, .D(G), .Q(G_));
+    Register #(.WIDTH(8)) Breg(.clock, .reset_L, .en, .D(B), .Q(B_));
+
+    Register #(.WIDTH(1)) Hreg(.clock, .reset_L, .en, .D(hsync), .Q(hsync_));
+    Register #(.WIDTH(1)) Vreg(.clock, .reset_L, .en, .D(vsync), .Q(vsync_));
+    Register #(.WIDTH(1)) Dreg(.clock, .reset_L, .en, .D(data_en), .Q(data_en_));
+
+    
+
+endmodule : LVDS_Data
 
 module HV_Mode
 #(parameter tHP=1344,   // units of clock
@@ -110,16 +130,20 @@ module HV_Mode
     property hperiod_prop;
         @(posedge clock) disable iff (~reset_L) ((hp == 0) && (en)) |-> ##[1229:1372] (hp == 0);
     endproperty
+    property vperiod_prop;
+        @(posedge clear_hp) disable iff (~reset_L) ((vp == 0) && (en)) |-> ##[623:718] (vp == 0);
+    endproperty
     
     // assertions
     assert property (data_en_prop) else $display("data_en HIGH when both hsync and vsync NOT HIGHT!");
     assert property (contr_data_en_prop) else $display("data_en NOT HIGH when both hsync and vsync HIGHT!");
     assert property (hperiod_prop) else $display("hperiod not within MIN/MAX!");
+    assert property (vperiod_prop) else $display("vperiod not within MIN/MAX!");
+
 
 endmodule : HV_Mode
 
-module HV_Mode_TB
-();
+module HV_Mode_TB();
     logic clock, reset_L, en;
     logic hsync, vsync, data_en;
 
