@@ -6,7 +6,7 @@
 `default_nettype none
 
 module Register
-#(parameter WIDTH 8)
+#(parameter WIDTH=8)
 (
     input logic clock, reset_L, en,
     input logic [WIDTH-1:0] D,
@@ -25,8 +25,8 @@ module Register
 endmodule : Register
 
 module Counter
-#(parameter WIDTH 8,
-  parameter STEP 1
+#(parameter WIDTH=8,
+  parameter STEP=1
  )
 (
     input logic clock, reset_L, en, incr, clear,
@@ -53,24 +53,24 @@ module Counter
 endmodule : Counter
 
 module HV_Mode
-#(parameter tHP 1344,   // units of clock
-  parameter tWH 1,      // units of clock
-  parameter tWHA 1024,  // units of clock
-  parameter tVP 635,    // units of tHP
-  parameter tWV 1,      // units of tHP
-  parameter tWVA 600,   // units of tHP
-  parameter tHBP 160,   // units of clock
-  parameter tHFP 160,   // units of clock
-  parameter tVBP 23,    // units of tHP
-  parameter tVFP 12     // units of tHP
+#(parameter tHP=1344,   // units of clock
+  parameter tWH=1,      // units of clock
+  parameter tWHA=1024,  // units of clock
+  parameter tVP=635,    // units of tHP
+  parameter tWV=1,      // units of tHP
+  parameter tWVA=600,   // units of tHP
+  parameter tHBP=160,   // units of clock
+  parameter tHFP=160,   // units of clock
+  parameter tVBP=23,    // units of tHP
+  parameter tVFP=12     // units of tHP
  )
 (
     input logic clock, reset_L, en,
     output logic hsync, vsync, data_en
 );
 
-    logic [tHP-1:0] hp;
-    logic [tVP-1:0] vp;
+    logic [$clog2(tHP)-1:0] hp;
+    logic [$clog2(tVP)-1:0] vp;
     logic wh, hbp, wha, hfp;
     logic wv, vbp, wva, vfp;
 
@@ -78,8 +78,8 @@ module HV_Mode
     logic clear_vp;
 
     assign clear_hp = (hp == tHP);
-    Counter #(WIDTH=$clog2(tHP)) hperiod(.clock, .reset_L, .clear(clear_hp),
-                                         .en, .incr('b1), .Q(hp));
+    Counter #(.WIDTH($clog2(tHP))) hperiod(.clock, .reset_L, .clear(clear_hp),
+                                         .en, .incr(1'b1), .Q(hp));
     
     assign wh = (hp > tWH);
     assign hbp = (hp > tWH) && (hp <= (tWH+tHBP));
@@ -87,8 +87,8 @@ module HV_Mode
     assign hfp = (hp > (tWH+tHBP+tWHA));
 
     assign clear_vp = (vp == tVP);
-    Counter #(WIDTH=$clog2(tVP)) vperiod(.clock, .reset_L, .clear(clear_vp),
-                                         .en(hp == tHP), .incr('b1), .Q(vp));
+    Counter #(.WIDTH($clog2(tVP))) vperiod(.clock, .reset_L, .clear(clear_vp),
+                                         .en(hp == tHP), .incr(1'b1), .Q(vp));
 
     assign wv = (vp > tWV);
     assign vbp = (vp > tWV) && (vp <= (tWV+tVBP));
@@ -96,7 +96,7 @@ module HV_Mode
     assign vfp = (vp > (tWV+tVBP+tWVA));
 
     assign hsync = wh | hbp | wha | hfp;
-    assign vsync = wv | wbp | wva | vfp;
+    assign vsync = wv | vbp | wva | vfp;
 
     assign data_en = hsync & vsync;
 
@@ -113,6 +113,13 @@ module HV_Mode_TB();
         reset_L = 'b1;
         en = 'b0;
         forever #10 clock = ~clock;
+    end
+
+    initial begin
+        $dumpfile("dump.vcd");
+        $dumpvars;
+        #100;
+        $finish();
     end
 
     // properties
