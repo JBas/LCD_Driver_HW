@@ -52,25 +52,43 @@ module Counter
 
 endmodule : Counter
 
-module LVDS_Data
+module Range
+#(parameter WIDTH=8)
+(
+    input logic [$clog2(WIDTH)-1:0] low, check, high,
+    output logic inBtwn
+);
+
+    assign inBtwn = ((low <= check) && (check <= high));
+
+endmodule : Range
+
+module LVDS_Data_Formatter
 (
     input logic clock, reset_L, en,
     input logic [7:0] R, G, B,
     input logic hsync, vsync, data_en,
-    output logic [3:0] Q
+    output logic [3:0] Q, Q_n
 );
 
-    Register #(.WIDTH(8)) Rreg(.clock, .reset_L, .en, .D(R), .Q(R_));
-    Register #(.WIDTH(8)) Greg(.clock, .reset_L, .en, .D(G), .Q(G_));
-    Register #(.WIDTH(8)) Breg(.clock, .reset_L, .en, .D(B), .Q(B_));
+    logic RA, RB, RC, RD;
 
-    Register #(.WIDTH(1)) Hreg(.clock, .reset_L, .en, .D(hsync), .Q(hsync_));
-    Register #(.WIDTH(1)) Vreg(.clock, .reset_L, .en, .D(vsync), .Q(vsync_));
-    Register #(.WIDTH(1)) Dreg(.clock, .reset_L, .en, .D(data_en), .Q(data_en_));
+    Shift_Register #(.WIDTH(7)) ra(.clock, .reset_L, .en, .lshift(1'b1),
+                                   .D({G[0], R[5], R[4], R[3], R[2], R[1], R[0]}),
+                                   .Qm(RA));
+    Shift_Register #(.WIDTH(7)) rb(.clock, .reset_L, .en, .lshift(1'b1),
+                                   .D({B[1], B[0], G[5], G[4], G[3], G[2], G[1]}),
+                                   .Qm(RB));
+    Shift_Register #(.WIDTH(7)) rc(.clock, .reset_L, .en, .lshift(1'b1),
+                                   .D({data_en, vsync, hsync, B[5], B[4], B[3], B[2]}),
+                                   .Qm(RC));
+    Shift_Register #(.WIDTH(7)) rd(.clock, .reset_L, .en, .lshift(1'b1),
+                                   .D({1'bx, B[7], B[6], G[7], G[6], R[7], R[6]}),
+                                   .Qm(RD));
+    assign Q = {RA, RB, RC, RD};
+    assign Q_n = ~Q;
 
-    
-
-endmodule : LVDS_Data
+endmodule : LVDS_Data_Formatter
 
 module HV_Mode
 #(parameter tHP=1344,   // units of clock
@@ -83,10 +101,14 @@ module HV_Mode
   parameter tHFP=160,   // units of clock
   parameter tVBP=23,    // units of tHP
   parameter tVFP=12     // units of tHP
+  parameter ROWS=1024,
+  parameter COLS=600
  )
 (
     input logic clock, reset_L, en,
-    output logic hsync, vsync, data_en
+    output logic hsync, vsync, data_en,
+    output logic [ROWS-1:0] row,
+    output logic [COLS-1:0] col
 );
 
     logic [$clog2(tHP)-1:0] hp;
@@ -119,6 +141,11 @@ module HV_Mode
     assign vsync = wv | vbp | wva | vfp;
 
     assign data_en = hsync & vsync;
+
+    Counter #(.WIDTH(ROWS-1)) r(.clock, .reset_L, .clear(1'b0),
+                                .en(clear_hp), .incr(1'b1), .Q(row));
+    Counter #(.WIDTH(COLS-1)) c(.clock, .reset_L, .clear(1'b0),
+                                .en(clear_vp), .incr(1'b1), .Q(col));
     
     // properties
     property data_en_prop;
